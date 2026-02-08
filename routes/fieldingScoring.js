@@ -16,6 +16,7 @@ router.post('/sync', async (req, res) => {
             pickup_type_id, throw_type_id, throw_technique_id, throw_accuracy_id,
             anticipation_rating_id, agility_rating_id,
             backup_observation_id, error_type_id,
+            handedness_id, batting_context_id, keeper_context_id, keeper_standing_position_id,
             ball_arrival_x, ball_arrival_y, wagon_wheel_x, wagon_wheel_y,
             resulted_in_wicket, resulted_in_boundary, is_dot_ball,
             fielding_notes, video_timestamp, fielding_quality_score,
@@ -37,6 +38,7 @@ router.post('/sync', async (req, res) => {
         throw_type_id, throw_technique_id, throw_accuracy_id,
         anticipation_rating_id, agility_rating_id,
         backup_observation_id, error_type_id,
+        handedness_id, batting_context_id, keeper_context_id, keeper_standing_position_id,
         ball_arrival_x, ball_arrival_y, wagon_wheel_x, wagon_wheel_y,
         resulted_in_wicket, resulted_in_boundary, is_dot_ball,
         fielding_notes, video_timestamp, fielding_quality_score,
@@ -54,6 +56,7 @@ router.post('/sync', async (req, res) => {
         ?, ?,
         ?, ?,
         ?, ?, ?, ?,
+        ?, ?, ?, ?,
         ?, ?, ?,
         ?, ?, ?,
         ?, 0,
@@ -70,6 +73,7 @@ router.post('/sync', async (req, res) => {
                 throw_type_id, throw_technique_id, throw_accuracy_id,
                 anticipation_rating_id, agility_rating_id,
                 backup_observation_id, error_type_id,
+                handedness_id, batting_context_id, keeper_context_id, keeper_standing_position_id,
                 ball_arrival_x, ball_arrival_y, wagon_wheel_x, wagon_wheel_y,
                 resulted_in_wicket || 0, resulted_in_boundary || 0, is_dot_ball || 0,
                 fielding_notes, video_timestamp, fielding_quality_score,
@@ -192,6 +196,36 @@ router.post('/batch-sync', async (req, res) => {
             if (!exists) errors.push(`throw_type_id ${record.throw_type_id} not found`);
         }
 
+        if (record.backup_observation_id && record.backup_observation_id > 0) {
+            const exists = await checkExists('backup_observation_types', record.backup_observation_id);
+            if (!exists) errors.push(`backup_observation_id ${record.backup_observation_id} not found`);
+        }
+
+        if (record.error_type_id && record.error_type_id > 0) {
+            const exists = await checkExists('error_types', record.error_type_id);
+            if (!exists) errors.push(`error_type_id ${record.error_type_id} not found`);
+        }
+
+        if (record.handedness_id && record.handedness_id > 0) {
+            const exists = await checkExists('handedness_types', record.handedness_id);
+            if (!exists) errors.push(`handedness_id ${record.handedness_id} not found`);
+        }
+
+        if (record.batting_context_id && record.batting_context_id > 0) {
+            const exists = await checkExists('batting_context_types', record.batting_context_id);
+            if (!exists) errors.push(`batting_context_id ${record.batting_context_id} not found`);
+        }
+
+        if (record.keeper_context_id && record.keeper_context_id > 0) {
+            const exists = await checkExists('keeper_context_types', record.keeper_context_id);
+            if (!exists) errors.push(`keeper_context_id ${record.keeper_context_id} not found`);
+        }
+
+        if (record.keeper_standing_position_id && record.keeper_standing_position_id > 0) {
+            const exists = await checkExists('keeper_standing_positions', record.keeper_standing_position_id);
+            if (!exists) errors.push(`keeper_standing_position_id ${record.keeper_standing_position_id} not found`);
+        }
+
         return { valid: errors.length === 0, errors };
     }
 
@@ -234,6 +268,7 @@ router.post('/batch-sync', async (req, res) => {
             throw_type_id, throw_technique_id, throw_accuracy_id,
             anticipation_rating_id, agility_rating_id,
             backup_observation_id, error_type_id,
+            handedness_id, batting_context_id, keeper_context_id, keeper_standing_position_id,
             ball_arrival_x, ball_arrival_y, wagon_wheel_x, wagon_wheel_y,
             resulted_in_wicket, resulted_in_boundary, is_dot_ball,
             fielding_notes, video_timestamp, fielding_quality_score,
@@ -249,6 +284,7 @@ router.post('/batch-sync', async (req, res) => {
             ?, ?, ?,
             ?, ?,
             ?, ?,
+            ?, ?, ?, ?,
             ?, ?, ?, ?,
             ?, ?, ?,
             ?, ?, ?,
@@ -277,6 +313,10 @@ router.post('/batch-sync', async (req, res) => {
             agility_rating_id = VALUES(agility_rating_id),
             backup_observation_id = VALUES(backup_observation_id),
             error_type_id = VALUES(error_type_id),
+            handedness_id = VALUES(handedness_id),
+            batting_context_id = VALUES(batting_context_id),
+            keeper_context_id = VALUES(keeper_context_id),
+            keeper_standing_position_id = VALUES(keeper_standing_position_id),
             ball_arrival_x = VALUES(ball_arrival_x),
             ball_arrival_y = VALUES(ball_arrival_y),
             wagon_wheel_x = VALUES(wagon_wheel_x),
@@ -303,6 +343,8 @@ router.post('/batch-sync', async (req, res) => {
                         n(record.throw_type_id), n(record.throw_technique_id), n(record.throw_accuracy_id),
                         n(record.anticipation_rating_id), n(record.agility_rating_id),
                         n(record.backup_observation_id), n(record.error_type_id),
+                        n(record.handedness_id), n(record.batting_context_id),
+                        n(record.keeper_context_id), n(record.keeper_standing_position_id),
                         n(record.ball_arrival_x), n(record.ball_arrival_y),
                         n(record.wagon_wheel_x), n(record.wagon_wheel_y),
                         record.resulted_in_wicket ? 1 : 0,
@@ -770,6 +812,214 @@ router.get('/ball/:fieldingScoringId/positions', async (req, res) => {
             success: false,
             error: error.message
         });
+    }
+});
+
+/**
+ * GET /api/fielding-scoring/match/:matchId/sessions
+ * Get fielding scoring sessions for a match
+ */
+router.get('/match/:matchId/sessions', async (req, res) => {
+    try {
+        const [sessions] = await db.execute(
+            `SELECT * FROM fielding_scoring_sessions WHERE match_id = ? ORDER BY inning_number`,
+            [req.params.matchId]
+        );
+
+        res.json({
+            success: true,
+            count: sessions.length,
+            sessions
+        });
+    } catch (error) {
+        console.error('Get sessions error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+/**
+ * POST /api/fielding-scoring/sessions
+ * Create/start a fielding scoring session (inning-level team selection)
+ */
+router.post('/sessions', async (req, res) => {
+    try {
+        const {
+            match_id,
+            inning_number,
+            batting_team_id,
+            bowling_team_id,
+            status = 'STARTED',
+            started_at,
+            created_by,
+            updated_by
+        } = req.body;
+
+        const now = new Date();
+        const toMySqlDateTime = (date) => {
+            if (!date) return null;
+            const d = new Date(date);
+            if (Number.isNaN(d.getTime())) return null;
+            return d.toISOString().slice(0, 19).replace('T', ' ');
+        };
+
+        const [result] = await db.execute(
+            `INSERT INTO fielding_scoring_sessions
+            (match_id, inning_number, batting_team_id, bowling_team_id, status, started_at, created_at, updated_at, created_by, updated_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                match_id,
+                inning_number,
+                batting_team_id,
+                bowling_team_id,
+                status,
+                toMySqlDateTime(started_at || now),
+                toMySqlDateTime(now),
+                toMySqlDateTime(now),
+                created_by,
+                updated_by
+            ]
+        );
+
+        res.json({
+            success: true,
+            id: result.insertId
+        });
+    } catch (error) {
+        console.error('Create session error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+/**
+ * PATCH /api/fielding-scoring/sessions/:id
+ * Update session status (end inning / end match)
+ */
+router.patch('/sessions/:id', async (req, res) => {
+    try {
+        const { status, ended_at, updated_by } = req.body;
+        const now = new Date();
+        const toMySqlDateTime = (date) => {
+            if (!date) return null;
+            const d = new Date(date);
+            if (Number.isNaN(d.getTime())) return null;
+            return d.toISOString().slice(0, 19).replace('T', ' ');
+        };
+
+        await db.execute(
+            `UPDATE fielding_scoring_sessions
+             SET status = ?, ended_at = ?, updated_at = ?, updated_by = ?
+             WHERE id = ?`,
+            [status, toMySqlDateTime(ended_at || now), toMySqlDateTime(now), updated_by, req.params.id]
+        );
+
+        res.json({
+            success: true
+        });
+    } catch (error) {
+        console.error('Update session error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+/**
+ * POST /api/fielding-scoring/sessions/batch-sync
+ * Sync fielding scoring sessions in batch
+ */
+router.post('/sessions/batch-sync', async (req, res) => {
+    const { sessions } = req.body;
+    const connection = await db.getConnection();
+
+    try {
+        await connection.beginTransaction();
+
+        const toMySqlDateTime = (date) => {
+            if (!date) return null;
+            const d = new Date(date);
+            if (Number.isNaN(d.getTime())) return null;
+            return d.toISOString().slice(0, 19).replace('T', ' ');
+        };
+
+        const synced_ids = [];
+        const failed_ids = [];
+        const errors = [];
+
+        for (const session of sessions || []) {
+            try {
+                await connection.execute(
+                    `INSERT INTO fielding_scoring_sessions
+                    (match_id, inning_number, batting_team_id, bowling_team_id, status, started_at, ended_at, created_at, updated_at, created_by, updated_by)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE
+                        batting_team_id = VALUES(batting_team_id),
+                        bowling_team_id = VALUES(bowling_team_id),
+                        status = VALUES(status),
+                        started_at = VALUES(started_at),
+                        ended_at = VALUES(ended_at),
+                        updated_at = VALUES(updated_at),
+                        updated_by = VALUES(updated_by)`,
+                    [
+                        session.match_id,
+                        session.inning_number,
+                        session.batting_team_id,
+                        session.bowling_team_id,
+                        session.status || 'STARTED',
+                        toMySqlDateTime(session.started_at || new Date()),
+                        toMySqlDateTime(session.ended_at || null),
+                        toMySqlDateTime(session.created_at || new Date()),
+                        toMySqlDateTime(session.updated_at || new Date()),
+                        session.created_by,
+                        session.updated_by
+                    ]
+                );
+
+                const [rows] = await connection.query(
+                    `SELECT id FROM fielding_scoring_sessions WHERE match_id = ? AND inning_number = ? LIMIT 1`,
+                    [session.match_id, session.inning_number]
+                );
+
+                const cloudId = rows.length > 0 ? rows[0].id : 0;
+                const localId = session.local_id || String(session.id || `${session.match_id}-${session.inning_number}`);
+
+                synced_ids.push({ local_id: String(localId), cloud_id: cloudId });
+            } catch (err) {
+                const localId = session.local_id || String(session.id || `${session.match_id}-${session.inning_number}`);
+                failed_ids.push(String(localId));
+                errors.push({ record_id: String(localId), error: err.message || 'Unknown error' });
+            }
+        }
+
+        await connection.commit();
+
+        res.json({
+            success: failed_ids.length === 0,
+            synced_count: synced_ids.length,
+            failed_count: failed_ids.length,
+            synced_ids,
+            failed_ids,
+            errors
+        });
+    } catch (error) {
+        await connection.rollback();
+        console.error('Batch session sync error:', error);
+        res.status(500).json({
+            success: false,
+            synced_count: 0,
+            failed_count: sessions?.length || 0,
+            synced_ids: [],
+            failed_ids: sessions?.map(s => String(s.local_id || s.id || '')) || [],
+            errors: [{ record_id: '', error: error.message }]
+        });
+    } finally {
+        connection.release();
     }
 });
 

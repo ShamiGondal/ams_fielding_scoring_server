@@ -95,7 +95,7 @@ CREATE TABLE pickup_types (
     created_at DATETIME DEFAULT NULL,
     updated_at DATETIME DEFAULT NULL,
     PRIMARY KEY (id),
-    UNIQUE KEY unique_pickup_cod4e (pickup_code)
+    UNIQUE KEY unique_pickup_code (pickup_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
 COMMENT='Types of pickups: clean, one-hand, two-hand, slide, dive';
 
@@ -319,6 +319,12 @@ CREATE TABLE fielding_scoring (
     -- Backup & Error
     backup_observation_id INT UNSIGNED NULL COMMENT 'FK to backup_observation_types',
     error_type_id INT UNSIGNED NULL COMMENT 'FK to error_types',
+
+    -- Batsman & Keeper Context
+    handedness_id INT UNSIGNED NULL COMMENT 'FK to handedness_types',
+    batting_context_id INT UNSIGNED NULL COMMENT 'FK to batting_context_types',
+    keeper_context_id INT UNSIGNED NULL COMMENT 'FK to keeper_context_types',
+    keeper_standing_position_id INT UNSIGNED NULL COMMENT 'FK to keeper_standing_positions',
     
     -- Ball Trajectory
     ball_arrival_x DECIMAL(5,2) NULL COMMENT 'X coordinate where ball arrived',
@@ -356,6 +362,10 @@ CREATE TABLE fielding_scoring (
     KEY idx_action_type (fielding_action_type_id),
     KEY idx_runs_impact (actual_runs_scored, runs_saved, runs_cost),
     KEY idx_wicket_boundary (resulted_in_wicket, resulted_in_boundary),
+    KEY idx_handedness (handedness_id),
+    KEY idx_batting_context (batting_context_id),
+    KEY idx_keeper_context (keeper_context_id),
+    KEY idx_keeper_position (keeper_standing_position_id),
     
     CONSTRAINT fk_fielding_scoring_match FOREIGN KEY (match_id) 
         REFERENCES matches (id) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -384,7 +394,15 @@ CREATE TABLE fielding_scoring (
     CONSTRAINT fk_fielding_scoring_backup_obs FOREIGN KEY (backup_observation_id) 
         REFERENCES backup_observation_types (id) ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT fk_fielding_scoring_error_type FOREIGN KEY (error_type_id) 
-        REFERENCES error_types (id) ON DELETE SET NULL ON UPDATE CASCADE
+        REFERENCES error_types (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_fielding_scoring_handedness FOREIGN KEY (handedness_id) 
+        REFERENCES handedness_types (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_fielding_scoring_batting_context FOREIGN KEY (batting_context_id) 
+        REFERENCES batting_context_types (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_fielding_scoring_keeper_context FOREIGN KEY (keeper_context_id) 
+        REFERENCES keeper_context_types (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_fielding_scoring_keeper_position FOREIGN KEY (keeper_standing_position_id) 
+        REFERENCES keeper_standing_positions (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
 COMMENT='Main fielding scoring table - one record per ball with fielding action';
 
@@ -596,6 +614,36 @@ CREATE TABLE match_fielding_setups (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
 COMMENT='Actual fielding setup used in matches';
 
+-- ----------------------------------------------------------------------------
+-- 23. FIELDING SCORING SESSIONS (Inning-level team selection)
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE fielding_scoring_sessions (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    match_id INT UNSIGNED NOT NULL,
+    inning_number INT UNSIGNED NOT NULL,
+    batting_team_id INT UNSIGNED NOT NULL,
+    bowling_team_id INT UNSIGNED NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'STARTED' COMMENT 'NOT_STARTED|STARTED|ENDED',
+    started_at DATETIME DEFAULT NULL,
+    ended_at DATETIME DEFAULT NULL,
+    created_at DATETIME DEFAULT NULL,
+    updated_at DATETIME DEFAULT NULL,
+    created_by INT NOT NULL,
+    updated_by INT NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY unique_match_inning (match_id, inning_number),
+    KEY idx_session_match (match_id),
+    KEY idx_session_status (status),
+    CONSTRAINT fk_fielding_session_match FOREIGN KEY (match_id)
+        REFERENCES matches (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_fielding_session_batting_team FOREIGN KEY (batting_team_id)
+        REFERENCES teams (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_fielding_session_bowling_team FOREIGN KEY (bowling_team_id)
+        REFERENCES teams (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+COMMENT='Inning-level fielding scoring session team selection';
+
 -- ============================================================================
 -- INDEXES FOR PERFORMANCE OPTIMIZATION
 -- ============================================================================
@@ -754,3 +802,14 @@ INSERT INTO handedness_types (handedness_code, handedness_name, is_active, creat
 ('RIGHT_HAND', 'Right Hand', 1, NOW(), NOW()),
 ('BOTH', 'Both', 1, NOW(), NOW());
 
+-- Insert bowling types (if they don't exist)
+INSERT INTO bowling_types (id, type, code, created_at, updated_at) VALUES
+(1, 'Fast', 'FAST', NOW(), NOW()),
+(2, 'Fast Medium', 'FM', NOW(), NOW()),
+(3, 'Medium', 'MED', NOW(), NOW()),
+(4, 'Medium Slow', 'MS', NOW(), NOW()),
+(5, 'Slow', 'SLOW', NOW(), NOW()),
+(6, 'Off Spin', 'OS', NOW(), NOW()),
+(7, 'Leg Spin', 'LS', NOW(), NOW()),
+(8, 'Left Arm Orthodox', 'LAO', NOW(), NOW()),
+(9, 'Left Arm Chinaman', 'LAC', NOW(), NOW());

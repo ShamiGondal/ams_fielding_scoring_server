@@ -44,6 +44,12 @@ router.get('/:id/prepare', async (req, res) => {
             [matchId]
         );
 
+        // Get fielding scoring sessions for this match (if any)
+        const [fielding_scoring_sessions] = await db.execute(
+            `SELECT * FROM fielding_scoring_sessions WHERE match_id = ? ORDER BY inning_number`,
+            [matchId]
+        );
+
         // Get fielding plans (templates)
         const [fielding_plans] = await db.execute(
             `SELECT fp.*, mt.description as match_type_name
@@ -129,6 +135,7 @@ router.get('/:id/prepare', async (req, res) => {
             players,
             fielding_plans,
             plan_positions,
+            fielding_scoring_sessions,
             lookups: {
                 positions,
                 action_types,
