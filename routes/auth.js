@@ -4,6 +4,10 @@ const db = require('../config/database');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
+require('dotenv').config();
+
+const JWT_SECRET = process.env.JWT_SECRET || 'feilding_ams_ec2';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '72h';
 
 /**
  * POST /api/auth/admin-login
@@ -56,8 +60,8 @@ router.post(
                     role: 'admin',
                     type: 'admin'
                 },
-                process.env.JWT_SECRET,
-                { expiresIn: process.env.JWT_EXPIRES_IN || '72h' }
+                JWT_SECRET,
+                { expiresIn: JWT_EXPIRES_IN }
             );
 
             res.json({
@@ -142,8 +146,8 @@ router.post(
                     roleId: user.role_id,
                     type: 'user'
                 },
-                process.env.JWT_SECRET,
-                { expiresIn: process.env.JWT_EXPIRES_IN || '72h' }
+                JWT_SECRET,
+                { expiresIn: JWT_EXPIRES_IN }
             );
 
             // Update last login timestamp (optional)
@@ -263,7 +267,7 @@ router.get('/verify-token', async (req, res) => {
             });
         }
 
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, JWT_SECRET);
 
         res.json({
             success: true,
