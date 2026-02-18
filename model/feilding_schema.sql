@@ -268,6 +268,22 @@ CREATE TABLE handedness_types (
 COMMENT='Handedness: LEFT_HAND, RIGHT_HAND, BOTH';
 
 -- ----------------------------------------------------------------------------
+-- 15b. BALL TYPES LOOKUP (NORMAL, WIDE, NO_BALL - extra ball in over)
+-- ----------------------------------------------------------------------------
+CREATE TABLE ball_types (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    ball_type_code VARCHAR(30) NOT NULL,
+    ball_type_name VARCHAR(100) NOT NULL,
+    display_order SMALLINT NOT NULL DEFAULT 0,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    created_at DATETIME DEFAULT NULL,
+    updated_at DATETIME DEFAULT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY unique_ball_type_code (ball_type_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+COMMENT='Ball delivery types: NORMAL, WIDE, NO_BALL';
+
+-- ----------------------------------------------------------------------------
 -- 16. FIELDING_SCORING - MAIN TABLE (Links to match_scorings)
 -- ----------------------------------------------------------------------------
 
@@ -278,7 +294,13 @@ CREATE TABLE fielding_scoring (
     match_id INT UNSIGNED NOT NULL,
     inning_number INT UNSIGNED NOT NULL,
     over_number INT UNSIGNED NOT NULL,
-    ball_number INT UNSIGNED NOT NULL,
+    ball_number INT UNSIGNED NOT NULL COMMENT 'Legal ball index 1-6; same number repeated for extra and replacement (use delivery_sequence for order)',
+    delivery_sequence INT UNSIGNED NOT NULL COMMENT '1-based delivery index within the over; order of deliveries',
+    
+    -- Batsman and ball type
+    striker_id INT UNSIGNED NULL COMMENT 'Batsman on strike this ball',
+    dismissed_batsman_id INT UNSIGNED NULL COMMENT 'Batsman dismissed on this ball when resulted_in_wicket=1',
+    ball_type_id INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'FK to ball_types (NORMAL/WIDE/NO_BALL)',
     
     -- Primary fielder details
     primary_fielder_id INT UNSIGNED NOT NULL COMMENT 'Main fielder involved',
@@ -355,7 +377,7 @@ CREATE TABLE fielding_scoring (
     updated_by INT NOT NULL,
     
     PRIMARY KEY (id),
-    UNIQUE KEY unique_match_ball (match_id, inning_number, over_number, ball_number),
+    UNIQUE KEY unique_match_delivery (match_id, inning_number, over_number, delivery_sequence),
     KEY idx_primary_fielder (primary_fielder_id),
     KEY idx_relay_fielder (relay_fielder_id),
     KEY idx_receiver_fielder (receiver_fielder_id),
@@ -402,7 +424,13 @@ CREATE TABLE fielding_scoring (
     CONSTRAINT fk_fielding_scoring_keeper_context FOREIGN KEY (keeper_context_id) 
         REFERENCES keeper_context_types (id) ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT fk_fielding_scoring_keeper_position FOREIGN KEY (keeper_standing_position_id) 
-        REFERENCES keeper_standing_positions (id) ON DELETE SET NULL ON UPDATE CASCADE
+        REFERENCES keeper_standing_positions (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_fielding_scoring_striker FOREIGN KEY (striker_id) 
+        REFERENCES players (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_fielding_scoring_dismissed_batsman FOREIGN KEY (dismissed_batsman_id) 
+        REFERENCES players (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_fielding_scoring_ball_type FOREIGN KEY (ball_type_id) 
+        REFERENCES ball_types (id) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
 COMMENT='Main fielding scoring table - one record per ball with fielding action';
 
@@ -624,6 +652,8 @@ CREATE TABLE fielding_scoring_sessions (
     inning_number INT UNSIGNED NOT NULL,
     batting_team_id INT UNSIGNED NOT NULL,
     bowling_team_id INT UNSIGNED NOT NULL,
+    striker_id INT UNSIGNED NULL COMMENT 'Batsman on strike',
+    non_striker_id INT UNSIGNED NULL COMMENT 'Non-striker',
     status VARCHAR(20) NOT NULL DEFAULT 'STARTED' COMMENT 'NOT_STARTED|STARTED|ENDED',
     started_at DATETIME DEFAULT NULL,
     ended_at DATETIME DEFAULT NULL,
@@ -640,7 +670,11 @@ CREATE TABLE fielding_scoring_sessions (
     CONSTRAINT fk_fielding_session_batting_team FOREIGN KEY (batting_team_id)
         REFERENCES teams (id) ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT fk_fielding_session_bowling_team FOREIGN KEY (bowling_team_id)
-        REFERENCES teams (id) ON DELETE CASCADE ON UPDATE CASCADE
+        REFERENCES teams (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_fielding_session_striker FOREIGN KEY (striker_id)
+        REFERENCES players (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_fielding_session_non_striker FOREIGN KEY (non_striker_id)
+        REFERENCES players (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
 COMMENT='Inning-level fielding scoring session team selection';
 
@@ -801,6 +835,12 @@ INSERT INTO handedness_types (handedness_code, handedness_name, is_active, creat
 ('LEFT_HAND', 'Left Hand', 1, NOW(), NOW()),
 ('RIGHT_HAND', 'Right Hand', 1, NOW(), NOW()),
 ('BOTH', 'Both', 1, NOW(), NOW());
+
+-- Ball types (NORMAL=default, WIDE, NO_BALL for extra ball in over)
+INSERT INTO ball_types (ball_type_code, ball_type_name, display_order, is_active, created_at, updated_at) VALUES
+('NORMAL', 'Normal', 1, 1, NOW(), NOW()),
+('WIDE', 'Wide', 2, 1, NOW(), NOW()),
+('NO_BALL', 'No Ball', 3, 1, NOW(), NOW());
 
 -- Insert bowling types (if they don't exist)
 INSERT INTO bowling_types (id, type, code, created_at, updated_at) VALUES

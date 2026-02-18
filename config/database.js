@@ -1,23 +1,28 @@
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 
-const pool = mysql.createPool({
+const poolConfig = {
     host: process.env.DB_HOST,
-    port: process.env.DB_PORT,
+    port: process.env.DB_PORT || 3306,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
-    ssl: {
-        rejectUnauthorized: true,
-    },
+    connectTimeout: 15000,
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
     enableKeepAlive: true,
-    keepAliveInitialDelay: 0
-});
+    keepAliveInitialDelay: 0,
+};
 
-// Test connection
+// Enable SSL only for cloud DBs (e.g. TiDB Cloud); disable for local/private MySQL
+if (process.env.DB_SSL === 'true' || (process.env.DB_HOST && process.env.DB_HOST.includes('tidbcloud.com'))) {
+    poolConfig.ssl = { rejectUnauthorized: true };
+}
+
+const pool = mysql.createPool(poolConfig);
+
+// Test connection (non-blocking; do not exit in serverless - Vercel kills the function)
 pool.getConnection()
     .then(connection => {
         console.log('✅ Database connected successfully');
@@ -26,7 +31,7 @@ pool.getConnection()
     })
     .catch(err => {
         console.error('❌ Database connection failed:', err.message);
-        process.exit(1);
+        // Do not process.exit(1) - crashes serverless functions on Vercel
     });
 
 module.exports = pool;

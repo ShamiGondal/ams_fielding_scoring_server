@@ -9,7 +9,7 @@ const db = require('../config/database');
 router.post('/sync', async (req, res) => {
     try {
         const {
-            match_id, inning_number, over_number, ball_number,
+            match_id, inning_number, over_number, ball_number, delivery_sequence,
             primary_fielder_id, primary_fielder_position_id,
             fielding_action_type_id,
             actual_runs_scored, runs_saved, runs_cost, potential_runs,
@@ -23,12 +23,22 @@ router.post('/sync', async (req, res) => {
             recorded_by_user_id, created_by, updated_by,
             relay_fielder_id, relay_fielder_position_id,
             receiver_fielder_id, receiver_fielder_position_id,
-            catch_difficulty_id, catch_result_id
+            catch_difficulty_id, catch_result_id,
+            striker_id, dismissed_batsman_id, ball_type_id
         } = req.body;
+
+        if (delivery_sequence == null || delivery_sequence < 1) {
+            return res.status(400).json({ success: false, error: 'delivery_sequence is required and must be >= 1' });
+        }
+        const ballNum = ball_number != null ? Number(ball_number) : 1;
+        if (ballNum < 1 || ballNum > 6) {
+            return res.status(400).json({ success: false, error: 'ball_number must be between 1 and 6' });
+        }
 
         const [result] = await db.execute(
             `INSERT INTO fielding_scoring (
-        match_id, inning_number, over_number, ball_number,
+        match_id, inning_number, over_number, ball_number, delivery_sequence,
+        striker_id, dismissed_batsman_id, ball_type_id,
         primary_fielder_id, primary_fielder_position_id,
         relay_fielder_id, relay_fielder_position_id,
         receiver_fielder_id, receiver_fielder_position_id,
@@ -45,7 +55,8 @@ router.post('/sync', async (req, res) => {
         recorded_by_user_id, is_verified,
         created_at, updated_at, created_by, updated_by
       ) VALUES (
-        ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?,
         ?, ?,
         ?, ?,
         ?, ?,
@@ -63,7 +74,8 @@ router.post('/sync', async (req, res) => {
         NOW(), NOW(), ?, ?
       )`,
             [
-                match_id, inning_number, over_number, ball_number,
+                match_id, inning_number, over_number, ballNum, delivery_sequence,
+                striker_id || null, dismissed_batsman_id || null, ball_type_id != null ? ball_type_id : 1,
                 primary_fielder_id, primary_fielder_position_id,
                 relay_fielder_id, relay_fielder_position_id,
                 receiver_fielder_id, receiver_fielder_position_id,
@@ -155,6 +167,13 @@ router.post('/batch-sync', async (req, res) => {
         if (!record.recorded_by_user_id || record.recorded_by_user_id === 0) {
             errors.push('recorded_by_user_id is required and must be > 0');
         }
+        if (record.delivery_sequence == null || record.delivery_sequence < 1) {
+            errors.push('delivery_sequence is required and must be >= 1');
+        }
+        const bn = record.ball_number != null ? Number(record.ball_number) : 1;
+        if (bn < 1 || bn > 6) {
+            errors.push('ball_number must be between 1 and 6');
+        }
 
         // FK validation (check if references exist)
         if (record.match_id && record.match_id > 0) {
@@ -226,6 +245,18 @@ router.post('/batch-sync', async (req, res) => {
             if (!exists) errors.push(`keeper_standing_position_id ${record.keeper_standing_position_id} not found`);
         }
 
+        if (record.striker_id && record.striker_id > 0) {
+            const exists = await checkExists('players', record.striker_id);
+            if (!exists) errors.push(`striker_id ${record.striker_id} not found`);
+        }
+        if (record.dismissed_batsman_id && record.dismissed_batsman_id > 0) {
+            const exists = await checkExists('players', record.dismissed_batsman_id);
+            if (!exists) errors.push(`dismissed_batsman_id ${record.dismissed_batsman_id} not found`);
+        }
+        const ballTypeId = record.ball_type_id != null && record.ball_type_id > 0 ? record.ball_type_id : 1;
+        const ballTypeExists = await checkExists('ball_types', ballTypeId);
+        if (!ballTypeExists) errors.push(`ball_type_id ${ballTypeId} not found in ball_types`);
+
         return { valid: errors.length === 0, errors };
     }
 
@@ -256,9 +287,11 @@ router.post('/batch-sync', async (req, res) => {
 
                 // STEP 3: Insert fielding scoring record (Idempotent UPSERT)
                 const recordedBy = record.recorded_by_user_id ?? record.created_by ?? record.updated_by;
+                const ballTypeId = record.ball_type_id != null && record.ball_type_id > 0 ? record.ball_type_id : 1;
                 const [result] = await connection.execute(
                     `INSERT INTO fielding_scoring (
-            match_id, inning_number, over_number, ball_number,
+            match_id, inning_number, over_number, ball_number, delivery_sequence,
+            striker_id, dismissed_batsman_id, ball_type_id,
             primary_fielder_id, primary_fielder_position_id,
             relay_fielder_id, relay_fielder_position_id,
             receiver_fielder_id, receiver_fielder_position_id,
@@ -274,7 +307,8 @@ router.post('/batch-sync', async (req, res) => {
             fielding_notes, video_timestamp, fielding_quality_score,
             recorded_by_user_id, created_at, updated_at, created_by, updated_by
           ) VALUES (
-            ?, ?, ?, ?,
+            ?, ?, ?, ?, ?,
+            ?, ?, ?,
             ?, ?,
             ?, ?,
             ?, ?,
@@ -292,6 +326,10 @@ router.post('/batch-sync', async (req, res) => {
           )
           ON DUPLICATE KEY UPDATE
             id = LAST_INSERT_ID(id),
+            ball_number = VALUES(ball_number),
+            striker_id = VALUES(striker_id),
+            dismissed_batsman_id = VALUES(dismissed_batsman_id),
+            ball_type_id = VALUES(ball_type_id),
             primary_fielder_id = VALUES(primary_fielder_id),
             primary_fielder_position_id = VALUES(primary_fielder_position_id),
             relay_fielder_id = VALUES(relay_fielder_id),
@@ -333,6 +371,8 @@ router.post('/batch-sync', async (req, res) => {
                     [
                         record.match_id, record.inning_number,
                         record.over_number, record.ball_number,
+                        record.delivery_sequence ?? record.ball_number,
+                        n(record.striker_id), n(record.dismissed_batsman_id), ballTypeId,
                         record.primary_fielder_id, record.primary_fielder_position_id,
                         n(record.relay_fielder_id), n(record.relay_fielder_position_id),
                         n(record.receiver_fielder_id), n(record.receiver_fielder_position_id),
@@ -364,7 +404,7 @@ router.post('/batch-sync', async (req, res) => {
                 });
             } catch (err) {
                 const undefinedFields = getUndefinedFields(record, [
-                    'match_id', 'inning_number', 'over_number', 'ball_number',
+                    'match_id', 'inning_number', 'over_number', 'ball_number', 'delivery_sequence',
                     'primary_fielder_id', 'primary_fielder_position_id',
                     'fielding_action_type_id', 'recorded_by_user_id'
                 ]);
@@ -432,12 +472,13 @@ router.post('/batch-sync', async (req, res) => {
                         // We need to find the parent ID.
                         // The position has `match_id`, `inning`, `over`, `ball` added by frontend SyncManager.
 
-                        if (pos.match_id) {
+                        if (pos.match_id != null && (pos.delivery_sequence != null || pos.ball != null)) {
+                            const deliverySeq = pos.delivery_sequence ?? pos.ball;
                             const [rows] = await connection.query(
                                 `SELECT id FROM fielding_scoring 
-                                  WHERE match_id = ? AND inning_number = ? AND over_number = ? AND ball_number = ?
+                                  WHERE match_id = ? AND inning_number = ? AND over_number = ? AND delivery_sequence = ?
                                   LIMIT 1`,
-                                [pos.match_id, pos.inning_number, pos.over_number, pos.ball_number]
+                                [pos.match_id, pos.inning_number, pos.over_number, deliverySeq]
                             );
                             if (rows.length > 0) mysql_fielding_scoring_id = rows[0].id;
                         }
@@ -588,7 +629,8 @@ router.patch('/:id', async (req, res) => {
             'fielding_action_type_id', 'actual_runs_scored', 'runs_saved',
             'runs_cost', 'potential_runs', 'pickup_type_id', 'throw_type_id',
             'throw_technique_id', 'throw_accuracy_id', 'fielding_notes',
-            'fielding_quality_score', 'is_verified'
+            'fielding_quality_score', 'is_verified',
+            'striker_id', 'dismissed_batsman_id', 'ball_type_id'
         ];
 
         const filteredUpdates = {};
@@ -701,7 +743,7 @@ router.get('/match/:matchId', async (req, res) => {
             LEFT JOIN fielding_positions fp ON fs.primary_fielder_position_id = fp.id
             LEFT JOIN fielding_action_types fat ON fs.fielding_action_type_id = fat.id
             WHERE fs.match_id = ?
-            ORDER BY fs.inning_number, fs.over_number, fs.ball_number
+            ORDER BY fs.inning_number, fs.over_number, fs.delivery_sequence
         `, [req.params.matchId]);
 
         res.json({
@@ -851,6 +893,8 @@ router.post('/sessions', async (req, res) => {
             inning_number,
             batting_team_id,
             bowling_team_id,
+            striker_id,
+            non_striker_id,
             status = 'STARTED',
             started_at,
             created_by,
@@ -867,13 +911,15 @@ router.post('/sessions', async (req, res) => {
 
         const [result] = await db.execute(
             `INSERT INTO fielding_scoring_sessions
-            (match_id, inning_number, batting_team_id, bowling_team_id, status, started_at, created_at, updated_at, created_by, updated_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            (match_id, inning_number, batting_team_id, bowling_team_id, striker_id, non_striker_id, status, started_at, created_at, updated_at, created_by, updated_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 match_id,
                 inning_number,
                 batting_team_id,
                 bowling_team_id,
+                striker_id || null,
+                non_striker_id || null,
                 status,
                 toMySqlDateTime(started_at || now),
                 toMySqlDateTime(now),
@@ -902,7 +948,7 @@ router.post('/sessions', async (req, res) => {
  */
 router.patch('/sessions/:id', async (req, res) => {
     try {
-        const { status, ended_at, updated_by } = req.body;
+        const { status, ended_at, updated_by, striker_id, non_striker_id } = req.body;
         const now = new Date();
         const toMySqlDateTime = (date) => {
             if (!date) return null;
@@ -911,11 +957,24 @@ router.patch('/sessions/:id', async (req, res) => {
             return d.toISOString().slice(0, 19).replace('T', ' ');
         };
 
+        const updates = [];
+        const values = [];
+        if (status !== undefined) { updates.push('status = ?'); values.push(status); }
+        if (ended_at !== undefined) { updates.push('ended_at = ?'); values.push(toMySqlDateTime(ended_at || now)); }
+        if (updated_by !== undefined) { updates.push('updated_by = ?'); values.push(updated_by); }
+        if (striker_id !== undefined) { updates.push('striker_id = ?'); values.push(striker_id || null); }
+        if (non_striker_id !== undefined) { updates.push('non_striker_id = ?'); values.push(non_striker_id || null); }
+        updates.push('updated_at = ?');
+        values.push(toMySqlDateTime(now));
+        values.push(req.params.id);
+
+        if (updates.length <= 1) {
+            return res.status(400).json({ error: 'No valid fields to update' });
+        }
+
         await db.execute(
-            `UPDATE fielding_scoring_sessions
-             SET status = ?, ended_at = ?, updated_at = ?, updated_by = ?
-             WHERE id = ?`,
-            [status, toMySqlDateTime(ended_at || now), toMySqlDateTime(now), updated_by, req.params.id]
+            `UPDATE fielding_scoring_sessions SET ${updates.join(', ')} WHERE id = ?`,
+            values
         );
 
         res.json({
@@ -956,11 +1015,13 @@ router.post('/sessions/batch-sync', async (req, res) => {
             try {
                 await connection.execute(
                     `INSERT INTO fielding_scoring_sessions
-                    (match_id, inning_number, batting_team_id, bowling_team_id, status, started_at, ended_at, created_at, updated_at, created_by, updated_by)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (match_id, inning_number, batting_team_id, bowling_team_id, striker_id, non_striker_id, status, started_at, ended_at, created_at, updated_at, created_by, updated_by)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON DUPLICATE KEY UPDATE
                         batting_team_id = VALUES(batting_team_id),
                         bowling_team_id = VALUES(bowling_team_id),
+                        striker_id = VALUES(striker_id),
+                        non_striker_id = VALUES(non_striker_id),
                         status = VALUES(status),
                         started_at = VALUES(started_at),
                         ended_at = VALUES(ended_at),
@@ -971,6 +1032,8 @@ router.post('/sessions/batch-sync', async (req, res) => {
                         session.inning_number,
                         session.batting_team_id,
                         session.bowling_team_id,
+                        session.striker_id || null,
+                        session.non_striker_id || null,
                         session.status || 'STARTED',
                         toMySqlDateTime(session.started_at || new Date()),
                         toMySqlDateTime(session.ended_at || null),
@@ -1043,7 +1106,8 @@ router.get('/lookups', async (req, res) => {
             keeperContextTypes,
             keeperStandingPositions,
             battingContextTypes,
-            handednessTypes
+            handednessTypes,
+            ballTypes
         ] = await Promise.all([
             // 1. Fielding Action Categories
             db.execute(`
@@ -1148,6 +1212,14 @@ router.get('/lookups', async (req, res) => {
                 FROM handedness_types
                 WHERE is_active = 1
                 ORDER BY id
+            `),
+
+            // 14. Ball Types (NORMAL, WIDE, NO_BALL)
+            db.execute(`
+                SELECT id, ball_type_code, ball_type_name, display_order
+                FROM ball_types
+                WHERE is_active = 1
+                ORDER BY display_order
             `)
         ]);
 
@@ -1168,7 +1240,8 @@ router.get('/lookups', async (req, res) => {
                 keeperContextTypes: keeperContextTypes[0],
                 keeperStandingPositions: keeperStandingPositions[0],
                 battingContextTypes: battingContextTypes[0],
-                handednessTypes: handednessTypes[0]
+                handednessTypes: handednessTypes[0],
+                ballTypes: ballTypes[0]
             }
         });
     } catch (error) {

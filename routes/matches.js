@@ -129,6 +129,10 @@ router.get('/:id/prepare', async (req, res) => {
             'SELECT * FROM handedness_types WHERE is_active = 1'
         );
 
+        const [ball_types] = await db.execute(
+            'SELECT id, ball_type_code, ball_type_name, display_order FROM ball_types WHERE is_active = 1 ORDER BY display_order'
+        );
+
         res.json({
             match: match[0],
             teams,
@@ -149,7 +153,8 @@ router.get('/:id/prepare', async (req, res) => {
                 keeper_contexts,
                 keeper_positions,
                 batting_contexts,
-                handedness
+                handedness,
+                ball_types: ball_types || []
             },
             downloaded_at: new Date()
         });

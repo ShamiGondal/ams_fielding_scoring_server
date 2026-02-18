@@ -72,17 +72,19 @@ app.use((err, req, res, next) => {
     });
 });
 
-// Start server
-app.listen(PORT, () => {
-    console.log('🚀 Cricket Fielding Scoring System API');
-    console.log(`📡 Server running on port ${PORT}`);
-    console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
-    console.log(`🔗 CORS Origin: ${process.env.CORS_ORIGIN}`);
-    console.log(`⏰ JWT Expiry: ${process.env.JWT_EXPIRES_IN}`);
-    console.log(`📊 Database: ${process.env.DB_NAME}`);
-    console.log('');
-    console.log(`🔗 API URL: http://localhost:${PORT}`);
-    console.log(`🏥 Health Check: http://localhost:${PORT}/health`);
-});
+// Start server only when running locally (not on Vercel serverless)
+if (!process.env.VERCEL) {
+    app.listen(PORT, () => {
+        console.log('🚀 Cricket Fielding Scoring System API');
+        console.log(`📡 Server running on port ${PORT}`);
+        console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
+        console.log(`🔗 CORS Origin: ${process.env.CORS_ORIGIN}`);
+        console.log(`⏰ JWT Expiry: ${process.env.JWT_EXPIRES_IN}`);
+        console.log(`📊 Database: ${process.env.DB_NAME}`);
+        console.log('');
+        console.log(`🔗 API URL: http://localhost:${PORT}`);
+        console.log(`🏥 Health Check: http://localhost:${PORT}/health`);
+    });
+}
 
 module.exports = app;

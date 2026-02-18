@@ -24,7 +24,8 @@ router.get('/all', async (req, res) => {
       keeperContexts,
       keeperPositions,
       battingContexts,
-      handedness
+      handedness,
+      ballTypes
     ] = await Promise.all([
       // 1. Fielding Action Categories
       db.execute(`
@@ -144,6 +145,14 @@ router.get('/all', async (req, res) => {
                 FROM handedness_types
                 WHERE is_active = 1
                 ORDER BY id
+            `),
+
+      // 15. Ball types (NORMAL, WIDE, NO_BALL)
+      db.execute(`
+                SELECT id, ball_type_code, ball_type_name, display_order
+                FROM ball_types
+                WHERE is_active = 1
+                ORDER BY display_order
             `)
     ]);
 
@@ -165,6 +174,7 @@ router.get('/all', async (req, res) => {
         keeperStandingPositions: keeperPositions[0],
         battingContextTypes: battingContexts[0],
         handednessTypes: handedness[0],
+        ballTypes: ballTypes[0],
 
         // Legacy structure for backward compatibility
         positions: positions[0],
