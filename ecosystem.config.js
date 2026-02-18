@@ -2,7 +2,7 @@ module.exports = {
     apps: [
         {
             name: 'ams-server',
-            script: 'server.js',
+            script: '/server.js',
             cwd: __dirname,
             instances: 1,
             exec_mode: 'fork',

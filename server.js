@@ -8,10 +8,12 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3004;
 
-// Middleware
+// Middleware - allow all origins
 app.use(cors({
-    origin: process.env.CORS_ORIGIN,
-    credentials: true
+    origin: true,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

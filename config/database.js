@@ -2,11 +2,11 @@ const mysql = require('mysql2/promise');
 require('dotenv').config();
 
 const poolConfig = {
-    host: process.env.DB_HOST,
+    host: process.env.DB_HOST || '172.16.17.55',
     port: process.env.DB_PORT || 3306,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
+    user: process.env.DB_USER || 'faizan',
+    password: process.env.DB_PASSWORD || 'Nca786*.',
+    database: process.env.DB_NAME || 'defaultdb',
     connectTimeout: 15000,
     waitForConnections: true,
     connectionLimit: 10,
